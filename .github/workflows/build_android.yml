@@ -1,0 +1,122 @@
+name: 'Build Android app'
+on:
+  repository_dispatch:
+    types: [build-android]
+  # push:
+  #   branches:
+  #     - main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Clone private repository from Bitbucket
+        run: git clone https://x-token-auth:${{ secrets.BITBUCKET_ACCESS_TOKEN }}@bitbucket.org/imrongc/rn-boilerplate.git app
+
+      # - name: Change directory to cloned repository
+      #   run: |
+      #     cd app
+
+      # - name: Create .env file
+      #   run: |
+      #     echo "APP_ID=${{ secrets.APP_ID }}" > .env
+      #     echo "CODEPUSH_DEPLOYMENT_KEY=${{ secrets.CODEPUSH_DEPLOYMENT_KEY }}" > .env
+      #     echo "CODEPUSH_DEPLOYMENT_KEY_IOS=${{ secrets.CODEPUSH_DEPLOYMENT_KEY_IOS }}" > .env
+      #     echo "AUTH_SERVICE_URL=${{ secrets.AUTH_SERVICE_URL }}" > .env
+      #     echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" > .env
+      #     echo "ANDROID_RELEASE_STORE_PASSWORD=${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}" > .env
+      #     echo "ANDROID_RELEASE_ALIAS=${{ secrets.ANDROID_RELEASE_ALIAS }}" > .env
+      #     echo "ANDROID_RELEASE_KEY_PASSWORD=${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}" > .env
+      #     echo "DEEPLINK_PREFIX=${{ vars.DEEPLINK_PREFIX }}" > .env
+      #     echo "ROOT_VIEW_BG_COLOR=${{ vars.ROOT_VIEW_BG_COLOR }}" > .env
+
+      # # - uses: actions/upload-artifact@v2
+      # #   with:
+      # #     name: env-file
+      # #     path: .env
+      # - name: Move .env
+      #   run: |
+      #     cat .env && cp .env app/.env
+
+      - name: Create .env file
+        uses: SpicyPizza/create-envfile@v2.0
+        with:
+          envkey_APP_ID: ${{ secrets.APP_ID }}
+          envkey_CODEPUSH_DEPLOYMENT_KEY: ${{ secrets.CODEPUSH_DEPLOYMENT_KEY }}
+          envkey_CODEPUSH_DEPLOYMENT_KEY_IOS: ${{ secrets.CODEPUSH_DEPLOYMENT_KEY_IOS }}
+          envkey_AUTH_SERVICE_URL: ${{ secrets.AUTH_SERVICE_URL }}
+          envkey_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          envkey_ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          envkey_ANDROID_RELEASE_ALIAS: ${{ secrets.ANDROID_RELEASE_ALIAS }}
+          envkey_ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          envkey_DEEPLINK_PREFIX: ${{ vars.DEEPLINK_PREFIX }}
+          envkey_ROOT_VIEW_BG_COLOR: ${{ vars.ROOT_VIEW_BG_COLOR }}
+          directory: app/
+          file_name: .env
+          fail_on_emoty: false
+          sort_keys: false
+
+      - name: Install Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: 17
+          distribution: adopt
+          cache: gradle
+
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+
+      - name: Setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.10.0'
+
+      - name: Install dependencies
+        run: |
+          npm i -g corepack
+          cd app && rm -rf node_modules/ && rm -rf yarn.lock && yarn install
+
+      - name: Build application (.apk)
+        run: |
+          cd app && yarn android:build:apk
+
+      - name: Upload Builded application
+        uses: actions/upload-artifact@v2
+        with:
+          name: app
+          path: app/android/app/build/outputs/apk/production/release/app-production-release.apk
+
+      - name: Create for Github Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref}}
+          release_name: Release ${{ github.ref}}
+          draft: true
+          prerelease: true
+
+      - name: Upload builded (.apk) to Github Release
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: app/android/app/build/outputs/apk/production/release/app-production-release.apk
+          asset_name: app-production-release.apk
+          asset_content_type: application/vnd.android.package-archive
+
+      # application/vnd.android.package-archive
+
+      # - name: Upload Builded application to github release
+      #   uses: xresloader/upload-to-github-release@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     file: android/app/build/outputs/apk/release/app-production-release.apk
+      #     tags: true
+      #     draft: true
